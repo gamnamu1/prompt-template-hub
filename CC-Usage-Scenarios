@@ -1,199 +1,111 @@
-검토한 주요 기술 문서와 M안 구현을 위한 클로드 코드 활용 시나리오를 작성하겠습니다.
-
-Write
-/home/user/prompt-template-hub/implementation/claude-code-implementation-scenario.md
 # M안 구현을 위한 클로드 코드 활용 시나리오
-
- 
 
 ## 문서 검토 요약
 
- 
-
 ### 검토한 핵심 문서
-
 1. **17 Claude Code SubAgents Examples** - 특화된 AI 개발팀 구성
-
 2. **How Developers Can Auto-Create Claude Skills** - 문서 기반 Skill 자동 생성
 
- 
-
 ---
-
- 
 
 ## 전체 아키텍처: 클로드 코드 중심 개발 체계
 
- 
-
 ```
-
 ┌─────────────────────────────────────────────────────────────┐
-
 │                    클로드 코드 메인                          │
-
 │                  (프로젝트 총괄 에이전트)                     │
-
 └─────────────────────────────────────────────────────────────┘
-
                             │
-
         ┌───────────────────┼───────────────────┐
-
         │                   │                   │
-
    ┌────▼────┐        ┌────▼────┐        ┌────▼────┐
-
    │Frontend │        │Backend  │        │Content  │
-
    │SubAgent │        │SubAgent │        │SubAgent │
-
    └─────────┘        └─────────┘        └─────────┘
-
 ```
 
- 
+
 
 ---
-
  
-
 ## Phase 1 (MVP - 4~6주): 핵심 기능 구현
 
- 
-
 ### 1.1 프로젝트 초기화 (1주차)
-
- 
 
 #### 사용 도구: General-Purpose Agent
 
 **프롬프트 예시:**
 
 ```
-
 프로젝트명: CR 템플릿 허브 MVP
-
 기술 스택: Next.js 14, Python FastAPI, PostgreSQL (Supabase)
-
- 
 
 다음 작업을 순서대로 수행해주세요:
 
 1. GitHub 저장소 생성 (prompt-template-hub)
-
 2. 프론트엔드: Next.js 14 + TypeScript + Tailwind 보일러플레이트 생성
-
 3. 백엔드: FastAPI + Pydantic 구조 생성
-
 4. Docker Compose 개발 환경 설정
-
 5. README.md 작성 (프로젝트 구조, 설치 방법)
-
 ```
-
  
-
 **활용 SubAgent:**
-
 - **Backend Developer** - FastAPI 구조 설계
-
 - **Frontend Developer** - Next.js 14 보일러플레이트
-
 - **Code Documenter** - 프로젝트 문서화
 
- 
 
 ---
 
- 
 
 ### 1.2 기사 스크래핑 모듈 개발 (1~2주차)
 
- 
-
 #### 사용 도구: Python Developer SubAgent
 
- 
-
 **SubAgent 설정 파일: `.claude/subagents/article-scraper.md`**
-
 ```yaml
-
 ---
-
 name: article-scraper
-
 description: 한국 주요 언론사 기사 스크래핑 전문가
-
 model: sonnet
-
 ---
 
- 
 
 당신은 한국 뉴스 사이트 스크래핑 전문가입니다.
 
- 
 
 ## 담당 업무
-
 - 한국 주요 언론사 (10개) 기사 스크래핑 모듈 개발
-
 - BeautifulSoup4, Selenium 활용
-
 - User-Agent 로테이션, 프록시 지원
-
 - 에러 핸들링 및 재시도 로직
 
- 
 
 ## 기술 스택
-
 - Python 3.12+
-
 - requests, BeautifulSoup4, Selenium
-
 - aiohttp (비동기 처리)
 
- 
 
 ## 구현 요구사항
-
 1. 주요 10개 언론사별 커스텀 파서 작성
-
 2. 제목, 본문, 날짜, 작성자, 이미지 추출
-
 3. 속도 제한 (rate limiting) 구현
-
 4. 스크래핑 실패 시 폴백 메커니즘
-
 5. 단위 테스트 커버리지 90% 이상
 
- 
 
 ## 출력 형식
-
 각 파서는 다음 Pydantic 모델을 반환:
-
 ```python
-
 class Article(BaseModel):
-
     url: str
-
     title: str
-
     content: str
-
     author: Optional[str]
-
     published_at: datetime
-
     media_outlet: str
-
     images: List[str]
-
 ```
 
  
