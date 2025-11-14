@@ -244,6 +244,204 @@ Think → Implement → Review
 
 ---
 
+## Skills 활용 가이드 (웹 버전)
+
+### Skills란?
+
+**Skills**는 도메인 지식, 참조 문서, 평가 기준 등을 패키징하여 Claude에게 제공하는 기능입니다. 역할(Role)이 "어떻게 일하는가"를 정의한다면, Skills는 "무엇을 알고 있는가"를 정의합니다.
+
+**웹 버전 사용법**:
+- 로컬에서 ZIP 파일로 준비
+- Claude.ai 웹 설정에서 업로드
+- 프롬프트에서 명시적으로 호출
+
+### 역할 vs Skills 비교
+
+| 구분 | 역할 (Role) | Skills |
+|------|------------|--------|
+| **목적** | 워크플로우, 코드 표준 | 도메인 지식, 참조 데이터 |
+| **정의 위치** | claude.md 내부 | 별도 ZIP 파일 |
+| **크기** | 작음 (< 100KB) | 클 수 있음 (< 10MB) |
+| **업데이트** | Git으로 버전 관리 | 재업로드 필요 |
+| **예시** | Backend Developer, Code Reviewer | CR 평가 기준, 언론사 HTML 구조 |
+
+**권장 조합**:
+- **역할**: 개발 프로세스, 코드 작성 방법
+- **Skills**: 도메인 전문 지식, 참조 문서, 예시 데이터
+
+### 프로젝트에서 사용할 Skills
+
+#### CR 평가 기준 Skill (Week 5 도입)
+
+**이름**: `CR Evaluation Criteria`
+
+**목적**: 한국 언론 기사를 8차원 평가 기준으로 분석하기 위한 체계적 가이드
+
+**포함 내용**:
+1. **진실성 (Truth)**: 사실과 의견 구분, 출처 명시
+2. **정확성 (Accuracy)**: 통계 정확성, 인용 정확성
+3. **공정성 (Fairness)**: 다양한 관점, 균형 잡힌 보도
+4. **투명성 (Transparency)**: 출처 공개, 이해관계 명시
+5. **맥락 (Context)**: 배경 정보, 역사적 맥락
+6. **인권 존중 (Human Rights)**: 취약 집단 보호, 차별 없는 표현
+7. **책임성 (Accountability)**: 오류 정정, 피해 구제
+8. **독립성 (Independence)**: 외부 압력으로부터 자유
+
+**기사 유형별 중점 차원**:
+- 스트레이트 뉴스: 진실성, 정확성, 투명성
+- 해설/분석: 공정성, 맥락, 독립성
+- 인터뷰: 공정성, 투명성, 인권 존중
+- 사설/칼럼: 논리성, 독립성, 책임성
+
+**도입 시점**: Week 5 (템플릿 생성 작업 시작 시)
+
+### Skills 호출 방법
+
+Skills를 사용하려면 **프롬프트에서 명시적으로 언급**해야 합니다.
+
+**기본 호출 패턴**:
+```
+[역할 이름]
+
+[Skill 이름] Skill을 참조하여 [작업 설명]
+
+요구사항:
+- [구체적 요구사항]
+- [출력 형식]
+
+Think → Implement → Review
+```
+
+**예시 1: 템플릿 생성**
+```
+[Backend Developer 역할]
+
+CR 평가 기준 Skill을 참조하여
+backend/templates/claude-sonnet-4/straight-news.md 파일을 생성해주세요.
+
+요구사항:
+- CR 8차원 평가 기준 체크리스트
+- 각 차원별 구체적 질문 (5-7개)
+- 스트레이트 뉴스에 중점을 둔 차원 강조 (진실성, 정확성, 투명성)
+- 평가 방법 가이드
+- JSON 출력 형식 예시
+
+Think → Implement → Review
+```
+
+**예시 2: 복수 템플릿 생성**
+```
+CR 평가 기준 Skill을 활용하여
+다음 템플릿들을 생성해주세요:
+
+1. backend/templates/claude-sonnet-4/analysis.md
+   - 중점 차원: 공정성, 맥락, 독립성
+
+2. backend/templates/chatgpt-4o/straight-news.md
+   - 중점 차원: 진실성, 정확성, 투명성
+
+각 템플릿:
+- 해당 AI 서비스 특성에 맞는 프롬프트 스타일
+- 기사 유형별 중점 차원 강조
+```
+
+**예시 3: Skill을 참조하여 코드 검증**
+```
+[Code Reviewer 역할]
+
+CR 평가 기준 Skill의 8차원을 참조하여
+backend/templates/ 디렉토리의 모든 템플릿을 검토해주세요.
+
+확인 사항:
+- 8개 차원이 모두 포함되어 있는지
+- 기사 유형별 중점 차원이 적절히 강조되었는지
+- 각 차원별 체크리스트가 구체적이고 실행 가능한지
+```
+
+### Skills 준비 과정 (간략)
+
+**Week 5 이전에 준비**:
+
+1. **로컬에서 Skill 폴더 생성**
+   ```
+   cr-evaluation-criteria/
+   ├── SKILL.md              # 필수: Skill 메타데이터 및 내용
+   └── examples/             # 선택: 예시 파일들
+       ├── straight-news-example.md
+       └── analysis-example.md
+   ```
+
+2. **SKILL.md 작성**
+   - 메타데이터 (name, description, version, author)
+   - CR 8차원 평가 기준 상세 설명
+   - 기사 유형별 중점 차원 매핑
+   - 활용 예시
+
+3. **ZIP 파일 생성**
+   ```bash
+   # macOS/Linux
+   zip -r cr-evaluation-criteria.zip cr-evaluation-criteria/
+
+   # Windows (PowerShell)
+   Compress-Archive -Path cr-evaluation-criteria -DestinationPath cr-evaluation-criteria.zip
+   ```
+
+4. **웹에서 업로드**
+   - Claude.ai → Settings → Capabilities
+   - "Code execution and file creation" 활성화
+   - Skills 섹션에서 "Upload custom skill"
+   - ZIP 파일 선택 및 업로드
+   - 활성화 확인
+
+**중요 사항**:
+- ⚠️ **Pro/Max 플랜 필요**: 무료 사용자는 Skills 사용 불가
+- ⚠️ **Code Execution 필수**: Skills는 컴퓨터 사용 기능 필요
+- ⚠️ **명시적 호출**: 프롬프트에서 Skill 이름 정확히 언급
+- ⚠️ **파일 구조**: SKILL.md가 ZIP 파일 루트에 있어야 함
+
+### Skills 문제 해결
+
+**Q: Skill이 적용되지 않는 것 같아요**
+```
+A: 프롬프트에서 명시적으로 언급하세요:
+"CR 평가 기준 Skill의 [섹션명]을 참조하여..."
+```
+
+**Q: 여러 Skills를 동시에 사용할 수 있나요?**
+```
+A: 네, 프롬프트에서 모두 언급하면 됩니다:
+"CR 평가 기준 Skill과 언론사 구조 Skill을 활용하여..."
+```
+
+**Q: Skill 업데이트는 어떻게 하나요?**
+```
+A:
+1. 기존 Skill 비활성화
+2. 기존 Skill 삭제
+3. 수정된 ZIP 파일로 재업로드
+4. 활성화
+```
+
+### Skills와 역할의 조화
+
+**효과적인 조합 예시**:
+
+```
+[Backend Developer 역할]  ← 워크플로우 (어떻게 일할 것인가)
++
+CR 평가 기준 Skill       ← 도메인 지식 (무엇을 알아야 하는가)
+↓
+고품질 템플릿 생성
+```
+
+**Week 5 템플릿 생성 작업 시**:
+1. `[Backend Developer 역할]` 호출 → Think-Implement-Review 워크플로우 적용
+2. `CR 평가 기준 Skill` 참조 → 8차원 평가 기준 활용
+3. claude.md의 "코드 표준" 준수 → Python/마크다운 스타일 가이드
+4. 결과: 일관되고 전문적인 템플릿
+
+---
+
 ## 기술 스택
 
 ### Backend
@@ -942,6 +1140,10 @@ Think → Implement → Review
 
 ---
 
-**문서 버전**: 1.0
+**문서 버전**: 1.1
 **최종 수정일**: 2025-11-14
 **관리**: 이 문서는 프로젝트의 모든 개발 활동의 기준입니다. 주요 의사결정이나 변경사항이 있을 때마다 업데이트합니다.
+
+**변경 이력**:
+- v1.1 (2025-11-14): Skills 활용 가이드 섹션 추가 (친구 K 피드백 반영)
+- v1.0 (2025-11-14): 초기 버전 작성
