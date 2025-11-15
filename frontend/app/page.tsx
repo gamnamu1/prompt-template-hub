@@ -4,6 +4,7 @@ import { useState } from 'react'
 import ArticleForm from '@/components/ArticleForm'
 import ArticleResult from '@/components/ArticleResult'
 import LoadingSpinner from '@/components/LoadingSpinner'
+import EvaluationResult from '@/components/EvaluationResult'
 
 export interface Article {
   title: string
@@ -14,19 +15,32 @@ export interface Article {
   original_url: string
 }
 
+export interface Evaluation {
+  evaluation_summary: string
+  scores: {
+    [key: string]: number
+  }
+  detailed_feedback?: string
+}
+
 export default function Home() {
   const [loading, setLoading] = useState(false)
+  const [evaluating, setEvaluating] = useState(false)
   const [article, setArticle] = useState<Article | null>(null)
+  const [evaluation, setEvaluation] = useState<Evaluation | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const handleScrape = async (url: string) => {
     setLoading(true)
     setError(null)
     setArticle(null)
+    setEvaluation(null)
 
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-      const response = await fetch(`${apiUrl}/scrape`, {
+
+      // Step 1: 스크래핑
+      const scrapeResponse = await fetch(`${apiUrl}/scrape`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -34,17 +48,42 @@ export default function Home() {
         body: JSON.stringify({ url }),
       })
 
-      if (!response.ok) {
-        const errorData = await response.json()
+      if (!scrapeResponse.ok) {
+        const errorData = await scrapeResponse.json()
         throw new Error(errorData.detail?.error || '스크래핑에 실패했습니다')
       }
 
-      const data: Article = await response.json()
-      setArticle(data)
+      const articleData: Article = await scrapeResponse.json()
+      setArticle(articleData)
+      setLoading(false)
+
+      // Step 2: 평가 (스크래핑 성공 후 자동 호출)
+      setEvaluating(true)
+
+      const evaluateResponse = await fetch(`${apiUrl}/evaluate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          article_body: articleData.body,
+          article_title: articleData.title,
+        }),
+      })
+
+      if (!evaluateResponse.ok) {
+        const errorData = await evaluateResponse.json()
+        console.error('평가 실패:', errorData)
+        // 평가 실패해도 스크래핑 결과는 유지
+      } else {
+        const evaluationData: Evaluation = await evaluateResponse.json()
+        setEvaluation(evaluationData)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다')
     } finally {
       setLoading(false)
+      setEvaluating(false)
     }
   }
 
@@ -85,7 +124,7 @@ export default function Home() {
         </div>
 
         {/* Article Form */}
-        <ArticleForm onSubmit={handleScrape} disabled={loading} />
+        <ArticleForm onSubmit={handleScrape} disabled={loading || evaluating} />
 
         {/* Error Message */}
         {error && (
@@ -119,11 +158,43 @@ export default function Home() {
           </div>
         )}
 
-        {/* Loading Spinner */}
-        {loading && <LoadingSpinner />}
+        {/* Loading Spinner - Scraping */}
+        {loading && (
+          <div className="mt-8 flex flex-col items-center justify-center py-12">
+            <div className="relative">
+              <div className="w-16 h-16 border-4 border-blue-200 dark:border-blue-800 rounded-full animate-pulse"></div>
+              <div className="absolute top-0 left-0 w-16 h-16 border-4 border-transparent border-t-blue-600 dark:border-t-blue-400 rounded-full animate-spin"></div>
+            </div>
+            <p className="mt-4 text-gray-600 dark:text-gray-300 font-medium">
+              기사를 스크래핑하고 있습니다...
+            </p>
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+              잠시만 기다려주세요
+            </p>
+          </div>
+        )}
+
+        {/* Loading Spinner - Evaluating */}
+        {evaluating && !loading && (
+          <div className="mt-8 flex flex-col items-center justify-center py-12">
+            <div className="relative">
+              <div className="w-16 h-16 border-4 border-purple-200 dark:border-purple-800 rounded-full animate-pulse"></div>
+              <div className="absolute top-0 left-0 w-16 h-16 border-4 border-transparent border-t-purple-600 dark:border-t-purple-400 rounded-full animate-spin"></div>
+            </div>
+            <p className="mt-4 text-gray-600 dark:text-gray-300 font-medium">
+              AI가 기사를 평가하고 있습니다...
+            </p>
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+              8차원 평가 기준을 적용 중입니다
+            </p>
+          </div>
+        )}
 
         {/* Article Result */}
         {article && !loading && <ArticleResult article={article} />}
+
+        {/* Evaluation Result */}
+        {evaluation && !evaluating && <EvaluationResult evaluation={evaluation} />}
       </div>
     </main>
   )
