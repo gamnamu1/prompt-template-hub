@@ -102,3 +102,4 @@ API 서버는 기본적으로 `http://localhost:8000`에서 실행됩니다.
 - Tailwind CSS를 이용한 유틸리티 기반 스타일링
 - 다크 모드 자동 감지 (prefers-color-scheme)
 - 접근성(a11y) 고려한 시맨틱 HTML
+
