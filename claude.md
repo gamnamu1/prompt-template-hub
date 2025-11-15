@@ -1116,16 +1116,41 @@ NEXT_PUBLIC_FEEDBACK_URL=https://forms.gle/xxxxx
 
 ### Week 1 Day 4-5: 스크래핑 모듈 구현
 
+**대상 언론사 (우선순위)**:
+1. 네이버 뉴스 (n.news.naver.com) - CSS 셀렉터 있음
+2. 다음 뉴스 (v.daum.net) - CSS 셀렉터 있음
+3. 연합뉴스 (www.yna.co.kr)
+4. 조선일보 (www.chosun.com)
+5. 중앙일보 (www.joongang.co.kr) - 친구 K 추가
+6. 한겨레 (www.hani.co.kr)
+7. 한국경제 (www.hankyung.com)
+
+**참조 문서**: `References/scraping-module-implementation-guide.md`
+
 ```
 [Backend Developer 역할]
 
+References/scraping-module-implementation-guide.md를 참조하여
 backend/scraper.py 구현:
 
-요구사항:
-- 조선일보, 중앙일보, 한겨레 스크래핑
-- 출력: JSON (title, content, author, published_date, url)
-- 에러 처리: 404, timeout, paywall
-- 타입 힌트 및 docstring 필수
+Phase 1 (Week 1):
+- 네이버 뉴스, 다음 뉴스 스크래퍼 구현 (CSS 셀렉터 있음)
+- Dispatcher 패턴 (URL → SOURCE_MAP → 적절한 스크래퍼)
+- Article 데이터 클래스 정의
+
+Phase 2 (Week 2):
+- 조선일보, 중앙일보, 한겨레 스크래퍼 추가
+- CSS 셀렉터 조사 및 구현
+
+출력 형식:
+- Article 데이터 클래스 (title, author, press, published_at, body, original_url)
+
+에러 처리:
+- 404, timeout, paywall, 구조 변경
+
+코드 표준:
+- 타입 힌트 및 docstring 필수 (Google Style)
+- PEP 8 준수
 
 Think → Implement → Review
 ```
@@ -1133,17 +1158,18 @@ Think → Implement → Review
 ### Week 1 완료 후 체크리스트
 
 - [ ] claude.md 작성 완료
-- [ ] backend/scraper.py 구현 및 테스트
+- [ ] backend/scraper.py 구현 (Article 클래스, Dispatcher, 네이버/다음)
 - [ ] Think→Implement→Review 워크플로우 익힘
 - [ ] 웹 버전 자동 PR 생성 경험
-- [ ] 3개 언론사 스크래핑 성공 (수동 테스트)
+- [ ] 네이버/다음 뉴스 스크래핑 성공 (수동 테스트)
 
 ---
 
-**문서 버전**: 1.1
+**문서 버전**: 1.2
 **최종 수정일**: 2025-11-14
 **관리**: 이 문서는 프로젝트의 모든 개발 활동의 기준입니다. 주요 의사결정이나 변경사항이 있을 때마다 업데이트합니다.
 
 **변경 이력**:
+- v1.2 (2025-11-14): 스크래핑 대상 언론사 업데이트 (친구 K 가이드 반영, 중앙일보 추가)
 - v1.1 (2025-11-14): Skills 활용 가이드 섹션 추가 (친구 K 피드백 반영)
 - v1.0 (2025-11-14): 초기 버전 작성
