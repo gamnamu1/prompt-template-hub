@@ -4,9 +4,14 @@
 한국 주요 언론사 및 포털 뉴스 사이트에서 기사 본문과 메타데이터를 추출합니다.
 광고, 댓글, 관련 뉴스 등 불필요한 요소를 제거하고 핵심 정보만 반환합니다.
 
-지원 대상:
-- Phase 1: 네이버 뉴스, 다음 뉴스
-- Phase 2: 연합뉴스, 조선일보, 중앙일보, 한겨레, 한국경제
+지원 대상 (7개 언론사):
+- 포털: 네이버 뉴스, 다음 뉴스
+- 언론사: 연합뉴스, 조선일보, 중앙일보, 한겨레, 한국경제
+
+참고:
+- 모든 스크래퍼는 표준 Article 데이터클래스 형식으로 결과를 반환합니다.
+- CSS 셀렉터는 웹사이트 구조 변경에 따라 조정이 필요할 수 있습니다.
+- 실제 사용 전 각 언론사별 테스트를 권장합니다.
 """
 
 from dataclasses import dataclass
@@ -65,6 +70,51 @@ def clean_text(text: str) -> str:
     # 앞뒤 공백 제거
     text = text.strip()
     return text
+
+
+def parse_daum_date(date_text: str) -> str:
+    """
+    다음 뉴스 날짜 형식을 YYYY-MM-DD HH:MM으로 변환합니다.
+
+    Args:
+        date_text: "입력 2025.11.14. 오후 2:30" 형식의 텍스트
+
+    Returns:
+        "2025-11-14 14:30" 형식의 날짜 문자열
+
+    Examples:
+        >>> parse_daum_date("입력 2025.11.14. 오전 9:30")
+        "2025-11-14 09:30"
+        >>> parse_daum_date("입력 2025.11.14. 오후 2:30")
+        "2025-11-14 14:30"
+    """
+    try:
+        # "입력 " 또는 "수정 " 제거
+        text = date_text.replace('입력 ', '').replace('수정 ', '').strip()
+
+        # 정규식: "2025.11.14. 오후 2:30" 형식 파싱
+        pattern = r'(\d{4})\.(\d{1,2})\.(\d{1,2})\.\s*(오전|오후)\s*(\d{1,2}):(\d{2})'
+        match = re.search(pattern, text)
+
+        if not match:
+            # 파싱 실패 시 원본 반환
+            return text
+
+        year, month, day, meridiem, hour, minute = match.groups()
+        hour = int(hour)
+
+        # 오후이고 12시가 아니면 +12
+        if meridiem == '오후' and hour != 12:
+            hour += 12
+        # 오전 12시는 00시로 변환
+        elif meridiem == '오전' and hour == 12:
+            hour = 0
+
+        return f"{year}-{month.zfill(2)}-{day.zfill(2)} {hour:02d}:{minute}"
+
+    except Exception as e:
+        logger.warning(f"날짜 파싱 실패: {date_text}, 에러: {e}")
+        return date_text
 
 
 def resolve_url(url: str) -> str:
@@ -237,15 +287,8 @@ def scrape_daum(url: str) -> Article:
         raise ValueError("발행일시를 찾을 수 없습니다")
 
     published_text = clean_text(date_elem.get_text())
-    # 다음 형식: "입력 2025.11.14. 오후 2:30" → "2025-11-14 14:30"
-    try:
-        # "입력 " 제거
-        published_text = published_text.replace('입력 ', '').replace('수정 ', '')
-        # "2025.11.14. 오후 2:30" → datetime 변환
-        # 간단히 텍스트 그대로 유지 (정규식으로 변환 가능하지만 복잡도 증가)
-        published_at = published_text
-    except Exception:
-        published_at = published_text
+    # "입력 2025.11.14. 오후 2:30" → "2025-11-14 14:30" 형식으로 변환
+    published_at = parse_daum_date(published_text)
 
     # 본문 추출
     body_elem = soup.select_one('.article_view')
@@ -274,7 +317,9 @@ def scrape_daum(url: str) -> Article:
 
 def scrape_yonhap(url: str) -> Article:
     """
-    연합뉴스 기사를 스크래핑합니다. (Phase 2 구현 예정)
+    연합뉴스 기사를 스크래핑합니다.
+
+    URL 패턴: www.yna.co.kr/view/...
 
     Args:
         url: 연합뉴스 기사 URL
@@ -283,14 +328,97 @@ def scrape_yonhap(url: str) -> Article:
         Article 객체
 
     Raises:
-        NotImplementedError: 아직 구현되지 않음
+        ValueError: 필수 요소를 찾을 수 없는 경우
+        requests.RequestException: 네트워크 에러
+
+    Note:
+        CSS 셀렉터는 웹사이트 구조 변경에 따라 조정이 필요할 수 있습니다.
     """
-    raise NotImplementedError("연합뉴스 스크래퍼는 Phase 2에서 구현 예정입니다")
+    try:
+        response = requests.get(
+            url,
+            timeout=TIMEOUT,
+            headers={'User-Agent': USER_AGENT}
+        )
+        response.raise_for_status()
+    except requests.HTTPError as e:
+        if e.response.status_code == 404:
+            raise ValueError(f"기사를 찾을 수 없습니다: {url}")
+        raise
+    except requests.Timeout:
+        raise ValueError(f"요청 시간 초과: {url}")
+
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    # 제목 추출 - 여러 패턴 시도
+    title_elem = (
+        soup.select_one('h1.tit') or
+        soup.select_one('.article-head h1') or
+        soup.select_one('h1')
+    )
+    if not title_elem:
+        raise ValueError("제목을 찾을 수 없습니다")
+    title = clean_text(title_elem.get_text())
+
+    # 언론사 - 연합뉴스로 고정
+    press = "연합뉴스"
+
+    # 기자명 추출
+    author_elem = (
+        soup.select_one('.writer') or
+        soup.select_one('.byline') or
+        soup.select_one('.journalist')
+    )
+    author = clean_text(author_elem.get_text()) if author_elem else "기자 정보 없음"
+
+    # 발행일시 추출
+    date_elem = (
+        soup.select_one('div.info-box01 span.txt-time') or
+        soup.select_one('.update-time') or
+        soup.select_one('time') or
+        soup.select_one('.date')
+    )
+    if not date_elem:
+        raise ValueError("발행일시를 찾을 수 없습니다")
+
+    published_text = clean_text(date_elem.get_text())
+    # 표준 형식으로 변환 시도
+    published_at = published_text
+
+    # 본문 추출
+    body_elem = (
+        soup.select_one('.article-body') or
+        soup.select_one('.story-news') or
+        soup.select_one('.content')
+    )
+    if not body_elem:
+        raise ValueError("본문을 찾을 수 없습니다")
+
+    # 본문 내 불필요한 요소 제거
+    for tag in body_elem.select('script, style, .ad, .adrs, .related-news'):
+        tag.decompose()
+
+    # 광고 및 관련 기사 제거
+    for tag in body_elem.find_all(['div', 'aside'], class_=re.compile(r'ad|banner|related|recommend', re.I)):
+        tag.decompose()
+
+    body = clean_text(body_elem.get_text())
+
+    return Article(
+        title=title,
+        author=author,
+        press=press,
+        published_at=published_at,
+        body=body,
+        original_url=url
+    )
 
 
 def scrape_chosun(url: str) -> Article:
     """
-    조선일보 기사를 스크래핑합니다. (Phase 2 구현 예정)
+    조선일보 기사를 스크래핑합니다.
+
+    URL 패턴: www.chosun.com/...
 
     Args:
         url: 조선일보 기사 URL
@@ -299,14 +427,103 @@ def scrape_chosun(url: str) -> Article:
         Article 객체
 
     Raises:
-        NotImplementedError: 아직 구현되지 않음
+        ValueError: 필수 요소를 찾을 수 없는 경우
+        requests.RequestException: 네트워크 에러
+
+    Note:
+        CSS 셀렉터는 웹사이트 구조 변경에 따라 조정이 필요할 수 있습니다.
     """
-    raise NotImplementedError("조선일보 스크래퍼는 Phase 2에서 구현 예정입니다")
+    try:
+        response = requests.get(
+            url,
+            timeout=TIMEOUT,
+            headers={'User-Agent': USER_AGENT}
+        )
+        response.raise_for_status()
+    except requests.HTTPError as e:
+        if e.response.status_code == 404:
+            raise ValueError(f"기사를 찾을 수 없습니다: {url}")
+        raise
+    except requests.Timeout:
+        raise ValueError(f"요청 시간 초과: {url}")
+
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    # 제목 추출 - 여러 패턴 시도
+    title_elem = (
+        soup.select_one('h1.article-header__headline') or
+        soup.select_one('.article-title') or
+        soup.select_one('h1[itemprop="headline"]') or
+        soup.select_one('h1')
+    )
+    if not title_elem:
+        raise ValueError("제목을 찾을 수 없습니다")
+    title = clean_text(title_elem.get_text())
+
+    # 언론사 - 조선일보로 고정
+    press = "조선일보"
+
+    # 기자명 추출
+    author_elem = (
+        soup.select_one('.article-header__reporter') or
+        soup.select_one('.byline') or
+        soup.select_one('[itemprop="author"]') or
+        soup.select_one('.reporter')
+    )
+    author = clean_text(author_elem.get_text()) if author_elem else "기자 정보 없음"
+
+    # 발행일시 추출
+    date_elem = (
+        soup.select_one('.article-header__date') or
+        soup.select_one('time') or
+        soup.select_one('[itemprop="datePublished"]') or
+        soup.select_one('.date')
+    )
+    if not date_elem:
+        raise ValueError("발행일시를 찾을 수 없습니다")
+
+    # datetime 속성이 있으면 사용
+    published_at = (
+        date_elem.get('datetime') or
+        date_elem.get('content') or
+        clean_text(date_elem.get_text())
+    )
+
+    # 본문 추출 - 조선일보 특정 셀렉터 우선
+    body_elem = (
+        soup.select_one('section.article-body') or
+        soup.find('section', {'itemprop': 'articleBody'}) or
+        soup.select_one('.article-content') or
+        soup.select_one('.story-body')
+    )
+    if not body_elem:
+        raise ValueError("본문을 찾을 수 없습니다")
+
+    # 본문 내 불필요한 요소 제거
+    for tag in body_elem.select('script, style, .ad, .advertisement, .related-article'):
+        tag.decompose()
+
+    # 광고 및 관련 기사 제거
+    for tag in body_elem.find_all(['div', 'aside', 'section'], class_=re.compile(r'ad|banner|related|recommend|promotion', re.I)):
+        tag.decompose()
+
+    body = clean_text(body_elem.get_text())
+
+    return Article(
+        title=title,
+        author=author,
+        press=press,
+        published_at=published_at,
+        body=body,
+        original_url=url
+    )
 
 
 def scrape_joongang(url: str) -> Article:
     """
-    중앙일보 기사를 스크래핑합니다. (Phase 2 구현 예정)
+    중앙일보 기사를 스크래핑합니다.
+
+    URL 패턴: www.joongang.co.kr/article/...
 
     Args:
         url: 중앙일보 기사 URL
@@ -315,14 +532,104 @@ def scrape_joongang(url: str) -> Article:
         Article 객체
 
     Raises:
-        NotImplementedError: 아직 구현되지 않음
+        ValueError: 필수 요소를 찾을 수 없는 경우
+        requests.RequestException: 네트워크 에러
+
+    Note:
+        CSS 셀렉터는 웹사이트 구조 변경에 따라 조정이 필요할 수 있습니다.
     """
-    raise NotImplementedError("중앙일보 스크래퍼는 Phase 2에서 구현 예정입니다")
+    try:
+        response = requests.get(
+            url,
+            timeout=TIMEOUT,
+            headers={'User-Agent': USER_AGENT}
+        )
+        response.raise_for_status()
+    except requests.HTTPError as e:
+        if e.response.status_code == 404:
+            raise ValueError(f"기사를 찾을 수 없습니다: {url}")
+        raise
+    except requests.Timeout:
+        raise ValueError(f"요청 시간 초과: {url}")
+
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    # 제목 추출 - 여러 패턴 시도
+    title_elem = (
+        soup.select_one('h1.headline') or
+        soup.select_one('.article-title') or
+        soup.select_one('h1[itemprop="headline"]') or
+        soup.select_one('.head-title') or
+        soup.select_one('h1')
+    )
+    if not title_elem:
+        raise ValueError("제목을 찾을 수 없습니다")
+    title = clean_text(title_elem.get_text())
+
+    # 언론사 - 중앙일보로 고정
+    press = "중앙일보"
+
+    # 기자명 추출
+    author_elem = (
+        soup.select_one('.reporter') or
+        soup.select_one('.byline') or
+        soup.select_one('[itemprop="author"]') or
+        soup.select_one('.name')
+    )
+    author = clean_text(author_elem.get_text()) if author_elem else "기자 정보 없음"
+
+    # 발행일시 추출
+    date_elem = (
+        soup.select_one('.date-time') or
+        soup.select_one('time') or
+        soup.select_one('[itemprop="datePublished"]') or
+        soup.select_one('.article-date')
+    )
+    if not date_elem:
+        raise ValueError("발행일시를 찾을 수 없습니다")
+
+    # datetime 속성이 있으면 사용
+    published_at = (
+        date_elem.get('datetime') or
+        date_elem.get('content') or
+        clean_text(date_elem.get_text())
+    )
+
+    # 본문 추출
+    body_elem = (
+        soup.select_one('.article-body') or
+        soup.select_one('#article_body') or
+        soup.find('div', {'itemprop': 'articleBody'}) or
+        soup.select_one('.article_body')
+    )
+    if not body_elem:
+        raise ValueError("본문을 찾을 수 없습니다")
+
+    # 본문 내 불필요한 요소 제거
+    for tag in body_elem.select('script, style, .ad, .advertisement, .related'):
+        tag.decompose()
+
+    # 광고 및 관련 기사 제거
+    for tag in body_elem.find_all(['div', 'aside'], class_=re.compile(r'ad|banner|related|recommend|ab-', re.I)):
+        tag.decompose()
+
+    body = clean_text(body_elem.get_text())
+
+    return Article(
+        title=title,
+        author=author,
+        press=press,
+        published_at=published_at,
+        body=body,
+        original_url=url
+    )
 
 
 def scrape_hani(url: str) -> Article:
     """
-    한겨레 기사를 스크래핑합니다. (Phase 2 구현 예정)
+    한겨레 기사를 스크래핑합니다.
+
+    URL 패턴: www.hani.co.kr/arti/...
 
     Args:
         url: 한겨레 기사 URL
@@ -331,14 +638,102 @@ def scrape_hani(url: str) -> Article:
         Article 객체
 
     Raises:
-        NotImplementedError: 아직 구현되지 않음
+        ValueError: 필수 요소를 찾을 수 없는 경우
+        requests.RequestException: 네트워크 에러
+
+    Note:
+        CSS 셀렉터는 웹사이트 구조 변경에 따라 조정이 필요할 수 있습니다.
     """
-    raise NotImplementedError("한겨레 스크래퍼는 Phase 2에서 구현 예정입니다")
+    try:
+        response = requests.get(
+            url,
+            timeout=TIMEOUT,
+            headers={'User-Agent': USER_AGENT}
+        )
+        response.raise_for_status()
+    except requests.HTTPError as e:
+        if e.response.status_code == 404:
+            raise ValueError(f"기사를 찾을 수 없습니다: {url}")
+        raise
+    except requests.Timeout:
+        raise ValueError(f"요청 시간 초과: {url}")
+
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    # 제목 추출 - 여러 패턴 시도
+    title_elem = (
+        soup.select_one('.article-head-title') or
+        soup.select_one('.title') or
+        soup.select_one('h1.article-title') or
+        soup.select_one('h1')
+    )
+    if not title_elem:
+        raise ValueError("제목을 찾을 수 없습니다")
+    title = clean_text(title_elem.get_text())
+
+    # 언론사 - 한겨레로 고정
+    press = "한겨레"
+
+    # 기자명 추출
+    author_elem = (
+        soup.select_one('.article-writer') or
+        soup.select_one('.byline') or
+        soup.select_one('.name') or
+        soup.select_one('.reporter')
+    )
+    author = clean_text(author_elem.get_text()) if author_elem else "기자 정보 없음"
+
+    # 발행일시 추출
+    date_elem = (
+        soup.select_one('.article-date') or
+        soup.select_one('.date-time') or
+        soup.select_one('time') or
+        soup.select_one('.date')
+    )
+    if not date_elem:
+        raise ValueError("발행일시를 찾을 수 없습니다")
+
+    # datetime 속성이 있으면 사용
+    published_at = (
+        date_elem.get('datetime') or
+        clean_text(date_elem.get_text())
+    )
+
+    # 본문 추출
+    body_elem = (
+        soup.select_one('.article-text') or
+        soup.select_one('#article-text') or
+        soup.select_one('.article-body') or
+        soup.select_one('.text')
+    )
+    if not body_elem:
+        raise ValueError("본문을 찾을 수 없습니다")
+
+    # 본문 내 불필요한 요소 제거
+    for tag in body_elem.select('script, style, .ad, .adrs, .related-article'):
+        tag.decompose()
+
+    # 광고 및 관련 기사 제거
+    for tag in body_elem.find_all(['div', 'aside'], class_=re.compile(r'ad|banner|related|recommend', re.I)):
+        tag.decompose()
+
+    body = clean_text(body_elem.get_text())
+
+    return Article(
+        title=title,
+        author=author,
+        press=press,
+        published_at=published_at,
+        body=body,
+        original_url=url
+    )
 
 
 def scrape_hankyung(url: str) -> Article:
     """
-    한국경제 기사를 스크래핑합니다. (Phase 2 구현 예정)
+    한국경제 기사를 스크래핑합니다.
+
+    URL 패턴: www.hankyung.com/...
 
     Args:
         url: 한국경제 기사 URL
@@ -347,9 +742,95 @@ def scrape_hankyung(url: str) -> Article:
         Article 객체
 
     Raises:
-        NotImplementedError: 아직 구현되지 않음
+        ValueError: 필수 요소를 찾을 수 없는 경우
+        requests.RequestException: 네트워크 에러
+
+    Note:
+        CSS 셀렉터는 웹사이트 구조 변경에 따라 조정이 필요할 수 있습니다.
     """
-    raise NotImplementedError("한국경제 스크래퍼는 Phase 2에서 구현 예정입니다")
+    try:
+        response = requests.get(
+            url,
+            timeout=TIMEOUT,
+            headers={'User-Agent': USER_AGENT}
+        )
+        response.raise_for_status()
+    except requests.HTTPError as e:
+        if e.response.status_code == 404:
+            raise ValueError(f"기사를 찾을 수 없습니다: {url}")
+        raise
+    except requests.Timeout:
+        raise ValueError(f"요청 시간 초과: {url}")
+
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    # 제목 추출 - 여러 패턴 시도
+    title_elem = (
+        soup.select_one('.headline') or
+        soup.select_one('.article-tit') or
+        soup.select_one('h1.title') or
+        soup.select_one('h1')
+    )
+    if not title_elem:
+        raise ValueError("제목을 찾을 수 없습니다")
+    title = clean_text(title_elem.get_text())
+
+    # 언론사 - 한국경제로 고정
+    press = "한국경제"
+
+    # 기자명 추출
+    author_elem = (
+        soup.select_one('.byline') or
+        soup.select_one('.reporter') or
+        soup.select_one('.author') or
+        soup.select_one('.journalist')
+    )
+    author = clean_text(author_elem.get_text()) if author_elem else "기자 정보 없음"
+
+    # 발행일시 추출
+    date_elem = (
+        soup.select_one('.date-time') or
+        soup.select_one('.article-date') or
+        soup.select_one('time') or
+        soup.select_one('.txt-date')
+    )
+    if not date_elem:
+        raise ValueError("발행일시를 찾을 수 없습니다")
+
+    # datetime 속성이 있으면 사용
+    published_at = (
+        date_elem.get('datetime') or
+        clean_text(date_elem.get_text())
+    )
+
+    # 본문 추출
+    body_elem = (
+        soup.select_one('.article-body') or
+        soup.select_one('#articletxt') or
+        soup.select_one('.txt-article') or
+        soup.select_one('.news-text')
+    )
+    if not body_elem:
+        raise ValueError("본문을 찾을 수 없습니다")
+
+    # 본문 내 불필요한 요소 제거
+    for tag in body_elem.select('script, style, .ad, .advertisement, .related'):
+        tag.decompose()
+
+    # 광고 및 관련 기사 제거
+    for tag in body_elem.find_all(['div', 'aside'], class_=re.compile(r'ad|banner|related|recommend', re.I)):
+        tag.decompose()
+
+    body = clean_text(body_elem.get_text())
+
+    return Article(
+        title=title,
+        author=author,
+        press=press,
+        published_at=published_at,
+        body=body,
+        original_url=url
+    )
 
 
 # 도메인 → 스크래퍼 함수 매핑
