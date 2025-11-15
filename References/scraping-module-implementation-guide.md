@@ -6,7 +6,7 @@
 
 ## 2. 개발 우선순위 및 범위
 
-총 6개의 뉴스 소스를 대상으로 하며, 아래 명시된 순서대로 개발을 진행합니다.
+총 7개의 뉴스 소스를 대상으로 하며, 아래 명시된 순서대로 개발을 진행합니다.
 
 | 우선순위 | 구분 | 대상 | 도메인 (예시) | 비고 |
 | :--- | :--- | :--- | :--- | :--- |
@@ -14,8 +14,9 @@
 | **2** | 포털 | **다음 뉴스** | `v.daum.net` | |
 | **3** | 언론사 | **연합뉴스** | `www.yna.co.kr` | |
 | **4** | 언론사 | **조선일보** | `www.chosun.com` | |
-| **5** | 언론사 | **한겨레** | `www.hani.co.kr` | |
-| **6** | 언론사 | **한국경제** | `www.hankyung.com` | |
+| **5** | 언론사 | **중앙일보** | `www.joongang.co.kr` | |
+| **6** | 언론사 | **한겨레** | `www.hani.co.kr` | |
+| **7** | 언론사 | **한국경제** | `www.hankyung.com` | |
 
 ### **범위에서 제외 (Out of Scope)**
 
@@ -63,13 +64,14 @@ def scrape_daum(url: str) -> Article:
     # 다음 뉴스 스크래핑 로직 구현
     pass
 
-# [나머지 4개 언론사 스크래퍼 함수 정의]
+# [나머지 5개 언론사 스크래퍼 함수 정의]
 
 SOURCE_MAP = {
     "naver.com": scrape_naver,
     "daum.net": scrape_daum,
     "yna.co.kr": scrape_yonhap, # 함수명은 자유롭게 정의
     "chosun.com": scrape_chosun,
+    "joongang.co.kr": scrape_joongang,
     "hani.co.kr": scrape_hani,
     "hankyung.com": scrape_hankyung,
 }
